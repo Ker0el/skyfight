@@ -223,6 +223,11 @@ function onShield(d) {
 
 function onFlash(d) {
     const color = d.color || '#5abfff';
+    // 闪现：本地预测位置直接对准终点（避免快照到达前拖尾）
+    if (d.pid === state.me.pid) {
+        state.me.localX = d.toX; state.me.localY = d.toY;
+        state.me.corrX = 0; state.me.corrY = 0;
+    }
     // 出发处：蓝色残影消散
     spawnExplosion(d.fromX, d.fromY, color, false);
     state.effects.push({ kind: 'ghost', x: d.fromX, y: d.fromY, t: 0, life: 500, color, angle: 0 });
@@ -255,12 +260,16 @@ function onSnapshot(d) {
             // 我自己：快照是权威位置，记录误差用于平滑修正（不直接覆盖本地预测）
             state.me.x = p.x; state.me.y = p.y; state.me.angle = p.angle;
             const errX = p.x - state.me.localX, errY = p.y - state.me.localY;
-            // 误差过大（如复活/闪现）直接对准，否则平滑修正
-            if (Math.hypot(errX, errY) > 150) {
+            const errDist = Math.hypot(errX, errY);
+            // 误差过大（复活/闪现等真实位移）直接对准；正常误差限幅平滑修正
+            if (errDist > 250) {
                 state.me.localX = p.x; state.me.localY = p.y;
                 state.me.corrX = 0; state.me.corrY = 0;
             } else {
-                state.me.corrX = errX; state.me.corrY = errY;
+                // 误差限幅：避免单帧超大误差导致冲刺
+                const maxErr = 60;
+                state.me.corrX = clamp(errX, -maxErr, maxErr);
+                state.me.corrY = clamp(errY, -maxErr, maxErr);
             }
             state.me.snapAt = performance.now();
             state.me.hp = p.hp; state.me.alive = p.alive; state.me.invincible = p.invincible;
@@ -668,8 +677,8 @@ function draw(now) {
 
     // 自己的位置：按键驱动本地预测 + 快照误差平滑修正（无跳变）
     if (state.me.alive) {
-        // 按键预测（与服务端同速，每帧推进）
-        const pK = state.keys, pSpd = speedOf(state.me.score);
+        // 按键预测（与服务端同速——含加速道具 1.6 倍，边界同服务端 clamp）
+        const pK = state.keys, pSpd = speedOf(state.me.score) * (state.me.boosted ? 1.6 : 1);
         let vx = 0, vy = 0;
         if (pK.W) vy -= 1;
         if (pK.S) vy += 1;
@@ -680,10 +689,13 @@ function draw(now) {
             state.me.localX += (vx / len) * pSpd * dt;
             state.me.localY += (vy / len) * pSpd * dt;
         }
+        state.me.localX = Math.max(16, Math.min(WORLD.w - 16, state.me.localX));
+        state.me.localY = Math.max(16, Math.min(WORLD.h - 16, state.me.localY));
         state.me.localA = state.mouse.angle;
-        // 快照误差指数衰减修正（帧间平滑，不跳变）
-        state.me.corrX *= Math.pow(0.001, dt);  // 约 0.1s 衰减到 ~0
-        state.me.corrY *= Math.pow(0.001, dt);
+        // 快照误差缓慢修正（限速：最多 150px/s，避免速度冲击）
+        const maxCorr = 150 * dt;
+        state.me.corrX += clamp(-state.me.corrX, -maxCorr, maxCorr);
+        state.me.corrY += clamp(-state.me.corrY, -maxCorr, maxCorr);
     }
     const finX = state.me.localX + state.me.corrX;
     const finY = state.me.localY + state.me.corrY;
