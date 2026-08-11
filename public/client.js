@@ -106,7 +106,7 @@ const state = {
     effects: [],          // 爆炸粒子/火花
     stars: [],            // 视差星空
     ping: 0,
-    rtt: 40,              // 实测往返延迟 ms（预测窗口基准）
+    snapInterval: 33,     // 实测快照到达间隔 ms（滑动平均）
     snapAt: 0,            // 上次快照接收时间
 };
 
@@ -245,11 +245,12 @@ function onFlash(d) {
 }
 
 function onSnapshot(d) {
-    // 快照间隔即往返时间的上界近似（发送即响应），滑动平均
+    // 实测快照到达间隔（滑动平均）——决定插值窗口和预测窗口
     const nowMs = performance.now();
-    state.rtt = state.rtt * 0.85 + Math.min(800, (nowMs - (state.snapAt ?? nowMs - 33))) * 0.15;
+    const interval = Math.min(300, nowMs - (state.snapAt || nowMs - 33));
+    state.snapInterval = state.snapInterval * 0.7 + interval * 0.3;
     state.snapAt = nowMs;
-    state.ping = Math.round(state.rtt);
+    state.ping = Math.round(state.snapInterval);
     pingV.textContent = state.ping;
 
     // 玩家
@@ -664,7 +665,7 @@ function draw(now) {
     if (state.phase === 'name') { requestAnimationFrame(draw); return; }
 
     // 快照间线性插值（自己：prev → cur；敌人：interp → cur）
-    const SNAP_MS = Math.max(33, state.rtt * 0.6);
+    const SNAP_MS = Math.max(33, state.snapInterval * 1.5);
     const meK = clamp((now - state.me.snapAt) / SNAP_MS, 0, 1);
     let dA = state.me.angle - state.me.prevAngle;
     while (dA > Math.PI) dA -= Math.PI * 2;
@@ -673,9 +674,9 @@ function draw(now) {
     const myX = state.me.prevX + (state.me.x - state.me.prevX) * meK;
     const myY = state.me.prevY + (state.me.y - state.me.prevY) * meK;
 
-    // 客户端预测：按键时自机向前模拟，快照到达后平滑拉回
-    // 窗口 = 快照间隔 + RTT：高延迟下预测持续更久，避免提前拉回造成卡顿
-    const PRED_MS = 33 + state.rtt;
+    // 客户端预测：从快照位置向前预测按键位移，窗口覆盖整个快照周期
+    // 预测量 = 全窗口位移 × 剩余比例，快照到达后自然衔接
+    const PRED_MS = Math.max(40, state.snapInterval * 2);
     const predK = 1 - Math.min(1, (now - state.me.snapAt) / PRED_MS);
     if (state.me.alive && predK > 0) {
         const pK = state.keys, pSpd = speedOf(state.me.score);
@@ -686,8 +687,10 @@ function draw(now) {
         if (pK.D) vx += 1;
         if (vx || vy) {
             const len = Math.hypot(vx, vy);
-            const predX = myX + (vx / len) * pSpd * predK * (1 / 30);
-            const predY = myY + (vy / len) * pSpd * predK * (1 / 30);
+            // 全窗口位移（PRED_MS 内移动的距离），随时间比例向前
+            const dist = pSpd * (PRED_MS / 1000) * predK;
+            const predX = myX + (vx / len) * dist;
+            const predY = myY + (vy / len) * dist;
             state.me.predX = predX; state.me.predY = predY;
         } else {
             state.me.predX = myX; state.me.predY = myY;
@@ -760,19 +763,29 @@ function draw(now) {
 }
 requestAnimationFrame(draw);
 
-function drawBackground(camX, camY) {
-    // 深空渐变
-    const g = ctx.createRadialGradient(innerWidth / 2, innerHeight / 2, 50, innerWidth / 2, innerHeight / 2, Math.max(innerWidth, innerHeight));
-    g.addColorStop(0, '#0a1530');
-    g.addColorStop(1, '#020308');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, innerWidth, innerHeight);
+// 预计算星星颜色（避免每帧字符串拼接）
+for (const s of state.stars) {
+    s.fill = `rgba(255,255,255,${0.25 + s.layer * 0.18})`;
+}
 
-    // 多层视差星
+let bgGradient = null, bgGradientSize = 0;
+function drawBackground(camX, camY) {
+    // 深空渐变（缓存，仅窗口尺寸变化时重建）
+    const maxDim = Math.max(innerWidth, innerHeight);
+    if (!bgGradient || bgGradientSize !== maxDim) {
+        bgGradient = ctx.createRadialGradient(innerWidth / 2, innerHeight / 2, 50, innerWidth / 2, innerHeight / 2, maxDim);
+        bgGradient.addColorStop(0, '#0a1530');
+        bgGradient.addColorStop(1, '#020308');
+        bgGradientSize = maxDim;
+    }
+    ctx.fillStyle = bgGradient; ctx.fillRect(0, 0, innerWidth, innerHeight);
+
+    // 多层视差星（预计算颜色，减少填充调用）
     for (const s of state.stars) {
         const factor = 0.05 * (4 - s.layer);
         const sx = ((s.x - camX * factor) % 1 + 1) % 1 * innerWidth;
         const sy = ((s.y - camY * factor) % 1 + 1) % 1 * innerHeight;
-        ctx.fillStyle = `rgba(255,255,255,${0.25 + s.layer * 0.18})`;
+        ctx.fillStyle = s.fill;
         ctx.fillRect(sx, sy, s.size, s.size);
     }
 }
