@@ -688,10 +688,10 @@ function draw(now) {
     while (dA < -Math.PI) dA += Math.PI * 2;
     const finA = state.me.prevAngle + dA * meK;
 
-    // 摄像机平滑跟随（用预测后的位置）
+    // 摄像机平滑跟随（跟插值基准位置，偏移不传给摄像机，避免漂移）
     const lerp = Math.min(1, dt * 6);
-    state.camera.x += (finX - state.camera.x) * lerp;
-    state.camera.y += (finY - state.camera.y) * lerp;
+    state.camera.x += (baseX - state.camera.x) * lerp;
+    state.camera.y += (baseY - state.camera.y) * lerp;
 
     // 屏幕震动
     let shX = 0, shY = 0;
