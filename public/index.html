@@ -15,8 +15,7 @@
         <div class="logo">✈ SKY FIGHT</div>
         <div class="sub">多人联网 · 空中缠斗</div>
         <label class="label">飞行员代号</label>
-        <input id="nameInput" type="text" maxlength="12" placeholder="输入 2-12 字，回车加入" autocomplete="off" />
-        <button id="joinBtn">加入世界</button>
+        <input id="nameInput" type="text" maxlength="12" placeholder="输入 2-12 字，回车加入" autocomplete="off" />        <button id="joinBtn">加入世界</button>
         <div id="nameStatus" class="status"></div>
         <div class="hint">
             <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 飞行</div>
@@ -46,10 +45,18 @@
         <div class="hud-center">
             <div class="stat"><span class="stat-k">击杀</span><span class="stat-v" id="killV">0</span></div>
             <div class="stat"><span class="stat-k">积分</span><span class="stat-v" id="scoreV">0</span></div>
+            <div class="stat"><span class="stat-k">等级</span><span class="stat-v" id="levelV">1</span></div>
             <div class="stat"><span class="stat-k">在线</span><span class="stat-v" id="onlineV">0</span></div>
             <div class="stat"><span class="stat-k">延迟</span><span class="stat-v" id="pingV">--</span></div>
         </div>
         <div class="hud-right">
+            <div class="leaderboard" id="leaderboard">
+                <div class="lb-header">
+                    <span class="lb-title">排行榜</span>
+                    <span class="lb-online" id="lbOnline">--</span>
+                </div>
+                <div class="lb-list" id="lbList"></div>
+            </div>
             <div class="minimap"><canvas id="minimap" width="180" height="136"></canvas></div>
         </div>
     </div>
@@ -65,6 +72,28 @@
 
     <!-- 准星 -->
     <div id="crosshair" class="crosshair"></div>
+
+    <!-- 技能冷却（左下，聊天框上方） -->
+    <div class="skill-row">
+        <div class="skill" id="skillMissile">
+            <div class="skill-fill" id="missileFill"></div>
+            <span class="skill-key">E</span>
+            <span class="skill-name">导弹</span>
+            <span class="skill-cd" id="missileCd"></span>
+        </div>
+        <div class="skill" id="skillShield">
+            <div class="skill-fill" id="shieldFill"></div>
+            <span class="skill-key">Q</span>
+            <span class="skill-name">护盾</span>
+            <span class="skill-cd" id="shieldCd"></span>
+        </div>
+        <div class="skill" id="skillFlash">
+            <div class="skill-fill" id="flashFill"></div>
+            <span class="skill-key">R</span>
+            <span class="skill-name">闪现</span>
+            <span class="skill-cd" id="flashCd"></span>
+        </div>
+    </div>
 
     <!-- 击杀/死亡通知 -->
     <div id="toastWrap" class="toast-wrap"></div>
