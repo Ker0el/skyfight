@@ -500,26 +500,35 @@ function tick(dt) {
   }
   room.missiles = missileSurvivors;
 
-  // 快照广播
-  broadcast({
-    op: 'snapshot',
-    data: {
-      tick: now,
-      world: { w: WORLD_W, h: WORLD_H },
-      players: [...room.players.values()].map(p => ({
-        pid: p.pid, name: p.name, color: p.color,
-        x: p.x, y: p.y, angle: p.angle,
-        hp: Math.max(0, p.hp), alive: p.alive, score: p.score,
-        invincible: p.invincibleUntil > now,
-        shielded: p.shieldUntil > now,
-        boosted: p.boostUntil > now,
-        level: levelOf(p.score), size: sizeOf(p.score),
-      })),
-      bullets: room.bullets.map(b => ({ x: b.x, y: b.y, angle: b.angle, color: b.color, owner: b.owner, size: b.size ?? BULLET_SIZE_BASE })),
-      missiles: room.missiles.map(m => ({ x: m.x, y: m.y, angle: m.angle, color: m.color, owner: m.owner })),
-      pickups: room.pickups.map(q => ({ x: q.x, y: q.y, type: q.type })),
-    }
-  });
+  // 快照广播（视野裁剪：只给每个玩家发其周围的数据，降低序列化开销）
+  const VIEW_R = 1500; // 视野半径
+  const playerSnaps = [...room.players.values()].map(p => ({
+    pid: p.pid, name: p.name, color: p.color,
+    x: p.x, y: p.y, angle: p.angle,
+    hp: Math.max(0, p.hp), alive: p.alive, score: p.score,
+    invincible: p.invincibleUntil > now,
+    shielded: p.shieldUntil > now,
+    boosted: p.boostUntil > now,
+    level: levelOf(p.score), size: sizeOf(p.score),
+  }));
+  const allBullets = room.bullets.map(b => ({ x: b.x, y: b.y, angle: b.angle, color: b.color, owner: b.owner, size: b.size ?? BULLET_SIZE_BASE }));
+  const allMissiles = room.missiles.map(m => ({ x: m.x, y: m.y, angle: m.angle, color: m.color, owner: m.owner }));
+  const allPickups = room.pickups.map(q => ({ x: q.x, y: q.y, type: q.type }));
+  for (const p of room.players.values()) {
+    if (!p.ws || p.ws.readyState !== 1) continue;
+    const inView = (x, y) => Math.abs(x - p.x) < VIEW_R && Math.abs(y - p.y) < VIEW_R;
+    unicast(p, {
+      op: 'snapshot',
+      data: {
+        tick: now,
+        world: { w: WORLD_W, h: WORLD_H },
+        players: playerSnaps,
+        bullets: allBullets.filter(b => inView(b.x, b.y)),
+        missiles: allMissiles.filter(m => inView(m.x, m.y)),
+        pickups: allPickups.filter(q => inView(q.x, q.y)),
+      }
+    });
+  }
 }
 
 // ---------- HTTP 静态服务器（public/） ----------
