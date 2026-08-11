@@ -105,20 +105,10 @@ const state = {
     camera: { x: 0, y: 0 },
     shake: { t: 0, dur: 0, mag: 0 },   // 屏幕震动
     effects: [],          // 爆炸粒子/火花
-    stars: [],            // 视差星空
     ping: 0,
     snapInterval: 33,     // 实测快照到达间隔 ms（滑动平均）
     snapAt: 0,            // 上次快照接收时间
 };
-
-// 初始化视差星空
-for (let i = 0; i < 180; i++) {
-    state.stars.push({
-        x: Math.random(), y: Math.random(),
-        size: Math.random() * 1.8 + 0.3,
-        layer: Math.random() < 0.4 ? 1 : Math.random() < 0.7 ? 2 : 3,
-    });
-}
 
 // =========================================================
 //  WebSocket
@@ -265,10 +255,10 @@ function onSnapshot(d) {
             // 我自己：快照是权威位置，记录误差用于平滑修正（不直接覆盖本地预测）
             state.me.x = p.x; state.me.y = p.y; state.me.angle = p.angle;
             const errX = p.x - state.me.localX, errY = p.y - state.me.localY;
-            // 误差过大（如闪现）直接对准，否则平滑修正
+            // 误差过大（如复活/闪现）直接对准，否则平滑修正
             if (Math.hypot(errX, errY) > 150) {
-                state.me.corrX = errX; state.me.corrY = errY;
                 state.me.localX = p.x; state.me.localY = p.y;
+                state.me.corrX = 0; state.me.corrY = 0;
             } else {
                 state.me.corrX = errX; state.me.corrY = errY;
             }
@@ -447,13 +437,13 @@ addEventListener('keydown', (e) => {
             playShoot();
             break;
         case 'KeyE':
-            send('missile', {});
+            send('flash', {});
             break;
         case 'KeyQ':
             send('shield', {});
             break;
         case 'KeyR':
-            send('flash', {});
+            send('missile', {});
             break;
     }
 });
@@ -731,7 +721,7 @@ function draw(now) {
     // 其他玩家（含屏幕外方向箭头）
     for (const p of state.players.values()) {
         if (!p.alive) continue;
-        const k = clamp((now - (p.snapAt || 0)) / SNAP_MS, 0, 1);
+        const k = clamp((now - (p.snapAt || 0)) / Math.max(33, state.snapInterval * 1.5), 0, 1);
         const ip = {
             ...p,
             x: p.interp.x + (p.x - p.interp.x) * k,
@@ -759,14 +749,9 @@ function draw(now) {
 }
 requestAnimationFrame(draw);
 
-// 预计算星星颜色（避免每帧字符串拼接）
-for (const s of state.stars) {
-    s.fill = `rgba(255,255,255,${0.25 + s.layer * 0.18})`;
-}
-
 let bgGradient = null, bgGradientSize = 0;
 function drawBackground(camX, camY) {
-    // 深空渐变（缓存，仅窗口尺寸变化时重建）
+    // 深空渐变（缓存，仅窗口尺寸变化时重建）——纯色背景，无星星，性能最优
     const maxDim = Math.max(innerWidth, innerHeight);
     if (!bgGradient || bgGradientSize !== maxDim) {
         bgGradient = ctx.createRadialGradient(innerWidth / 2, innerHeight / 2, 50, innerWidth / 2, innerHeight / 2, maxDim);
@@ -775,15 +760,6 @@ function drawBackground(camX, camY) {
         bgGradientSize = maxDim;
     }
     ctx.fillStyle = bgGradient; ctx.fillRect(0, 0, innerWidth, innerHeight);
-
-    // 多层视差星（预计算颜色，减少填充调用）
-    for (const s of state.stars) {
-        const factor = 0.05 * (4 - s.layer);
-        const sx = ((s.x - camX * factor) % 1 + 1) % 1 * innerWidth;
-        const sy = ((s.y - camY * factor) % 1 + 1) % 1 * innerHeight;
-        ctx.fillStyle = s.fill;
-        ctx.fillRect(sx, sy, s.size, s.size);
-    }
 }
 
 function drawWorldBorder(camX, camY) {
