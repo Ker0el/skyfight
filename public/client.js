@@ -90,8 +90,7 @@ const state = {
     phase: 'name',       // name | play | dead
     me: { pid: 0, name: '', color: '#fff',
           x: 0, y: 0, angle: 0, hp: 100, alive: true, score: 0, kills: 0, invincible: false, shielded: false, size: SIZE_BASE,
-          localX: 0, localY: 0, localA: 0,   // 本地预测位置（每帧按键驱动）
-          corrX: 0, corrY: 0 },             // 快照误差（指数衰减平滑修正）
+          prevX: 0, prevY: 0, prevAngle: 0, snapAt: 0 },
     keys: { W:false, A:false, S:false, D:false, Space:false },
     mouse: { x: 0, y: 0, angle: 0, down: false },
     players: new Map(),   // pid -> {name,x,y,angle,hp,color,alive,score,invincible}
@@ -197,9 +196,8 @@ function onJoined(d) {
     state.me.pid = d.pid;
     state.me.name = d.name;
     state.me.x = d.spawn.x; state.me.y = d.spawn.y;
-    state.me.localX = d.spawn.x; state.me.localY = d.spawn.y;
-    state.me.localA = -Math.PI / 2;
-    state.me.corrX = 0; state.me.corrY = 0;
+    state.me.prevX = d.spawn.x; state.me.prevY = d.spawn.y;
+    state.me.prevAngle = -Math.PI / 2;
     state.camera.x = d.spawn.x; state.camera.y = d.spawn.y;
     WORLD.w = d.world.w; WORLD.h = d.world.h;
     meName.textContent = d.name;
@@ -223,10 +221,10 @@ function onShield(d) {
 
 function onFlash(d) {
     const color = d.color || '#5abfff';
-    // 闪现：本地预测位置直接对准终点（避免快照到达前拖尾）
+    // 闪现：自己本地直接对准终点（快照插值会覆盖）
     if (d.pid === state.me.pid) {
-        state.me.localX = d.toX; state.me.localY = d.toY;
-        state.me.corrX = 0; state.me.corrY = 0;
+        state.me.prevX = state.me.x = d.toX;
+        state.me.prevY = state.me.y = d.toY;
     }
     // 出发处：蓝色残影消散
     spawnExplosion(d.fromX, d.fromY, color, false);
@@ -257,20 +255,11 @@ function onSnapshot(d) {
     for (const p of d.players) {
         pids.add(p.pid);
         if (p.pid === state.me.pid) {
-            // 我自己：快照是权威位置，记录误差用于平滑修正（不直接覆盖本地预测）
-            state.me.x = p.x; state.me.y = p.y; state.me.angle = p.angle;
-            const errX = p.x - state.me.localX, errY = p.y - state.me.localY;
-            const errDist = Math.hypot(errX, errY);
-            // 误差过大（复活/闪现等真实位移）直接对准；正常误差限幅平滑修正
-            if (errDist > 250) {
-                state.me.localX = p.x; state.me.localY = p.y;
-                state.me.corrX = 0; state.me.corrY = 0;
-            } else {
-                // 误差限幅：避免单帧超大误差导致冲刺
-                const maxErr = 60;
-                state.me.corrX = clamp(errX, -maxErr, maxErr);
-                state.me.corrY = clamp(errY, -maxErr, maxErr);
-            }
+            // 我自己：纯快照插值（prev → cur），无预测无修正，绝对平滑
+            state.me.prevX = state.me.x; state.me.prevY = state.me.y;
+            state.me.prevAngle = state.me.angle;
+            state.me.x = p.x; state.me.y = p.y;
+            state.me.angle = p.angle;
             state.me.snapAt = performance.now();
             state.me.hp = p.hp; state.me.alive = p.alive; state.me.invincible = p.invincible;
             state.me.shielded = p.shielded;
@@ -392,8 +381,8 @@ function onRespawn(d) {
         state.phase = 'play';
         deathMask.hidden = true;
         state.me.hp = maxHpOf(state.me.score);
-        state.me.localX = d.x; state.me.localY = d.y;
-        state.me.corrX = 0; state.me.corrY = 0;
+        state.me.prevX = state.me.x = d.x;
+        state.me.prevY = state.me.y = d.y;
     }
     const p = state.players.get(d.pid);
     if (p) { p.x = d.x; p.y = d.y; p.hp = maxHpOf(p.score || 0); p.alive = true; }
@@ -675,31 +664,15 @@ function draw(now) {
 
     if (state.phase === 'name') { requestAnimationFrame(draw); return; }
 
-    // 自己的位置：按键驱动本地预测 + 快照误差平滑修正（无跳变）
-    if (state.me.alive) {
-        // 按键预测（与服务端同速——含加速道具 1.6 倍，边界同服务端 clamp）
-        const pK = state.keys, pSpd = speedOf(state.me.score) * (state.me.boosted ? 1.6 : 1);
-        let vx = 0, vy = 0;
-        if (pK.W) vy -= 1;
-        if (pK.S) vy += 1;
-        if (pK.A) vx -= 1;
-        if (pK.D) vx += 1;
-        if (vx || vy) {
-            const len = Math.hypot(vx, vy);
-            state.me.localX += (vx / len) * pSpd * dt;
-            state.me.localY += (vy / len) * pSpd * dt;
-        }
-        state.me.localX = Math.max(16, Math.min(WORLD.w - 16, state.me.localX));
-        state.me.localY = Math.max(16, Math.min(WORLD.h - 16, state.me.localY));
-        state.me.localA = state.mouse.angle;
-        // 快照误差缓慢修正（限速：最多 150px/s，避免速度冲击）
-        const maxCorr = 150 * dt;
-        state.me.corrX += clamp(-state.me.corrX, -maxCorr, maxCorr);
-        state.me.corrY += clamp(-state.me.corrY, -maxCorr, maxCorr);
-    }
-    const finX = state.me.localX + state.me.corrX;
-    const finY = state.me.localY + state.me.corrY;
-    const finA = state.me.localA;
+    // 自己的位置：纯快照线性插值（prev → cur），与服务端 tick 同节奏，绝对平滑
+    const SNAP_MS = Math.max(33, state.snapInterval * 1.5);
+    const meK = clamp((now - state.me.snapAt) / SNAP_MS, 0, 1);
+    const finX = state.me.prevX + (state.me.x - state.me.prevX) * meK;
+    const finY = state.me.prevY + (state.me.y - state.me.prevY) * meK;
+    let dA = state.me.angle - state.me.prevAngle;
+    while (dA > Math.PI) dA -= Math.PI * 2;
+    while (dA < -Math.PI) dA += Math.PI * 2;
+    const finA = state.me.prevAngle + dA * meK;
 
     // 摄像机平滑跟随（用预测后的位置）
     const lerp = Math.min(1, dt * 6);
