@@ -1,0 +1,16 @@
+{
+  "name": "skyfight",
+  "version": "1.0.0",
+  "description": "多人联网开飞机 - WebSocket + Canvas",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
+

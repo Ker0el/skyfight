@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Sky Fight · 多人开飞机</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ========== 屏幕 1: 名字输入 ========== -->
+<div id="screen-name" class="screen active">
+    <div class="stars" aria-hidden="true"></div>
+    <div class="name-card">
+        <div class="logo">✈ SKY FIGHT</div>
+        <div class="sub">多人联网 · 空中缠斗</div>
+        <label class="label">飞行员代号</label>
+        <input id="nameInput" type="text" maxlength="12" placeholder="输入 2-12 字，回车加入" autocomplete="off" />
+        <button id="joinBtn">加入世界</button>
+        <div id="nameStatus" class="status"></div>
+        <div class="hint">
+            <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 飞行</div>
+            <div><kbd>Space</kbd> / 鼠标左键 开火</div>
+            <div><kbd>Mouse</kbd> 瞄准方向</div>
+            <div><kbd>Enter</kbd> 聊天</div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 屏幕 2: 战斗 ========== -->
+<div id="screen-game" class="screen">
+    <canvas id="game"></canvas>
+
+    <!-- 顶部 HUD -->
+    <div class="hud-top">
+        <div class="hud-left">
+            <div class="me">
+                <span class="dot" id="meDot"></span>
+                <span id="meName">--</span>
+            </div>
+            <div class="hp-bar">
+                <div class="hp-fill" id="hpFill"></div>
+                <span class="hp-text" id="hpText">100 / 100</span>
+            </div>
+        </div>
+        <div class="hud-center">
+            <div class="stat"><span class="stat-k">击杀</span><span class="stat-v" id="killV">0</span></div>
+            <div class="stat"><span class="stat-k">积分</span><span class="stat-v" id="scoreV">0</span></div>
+            <div class="stat"><span class="stat-k">在线</span><span class="stat-v" id="onlineV">0</span></div>
+            <div class="stat"><span class="stat-k">延迟</span><span class="stat-v" id="pingV">--</span></div>
+        </div>
+        <div class="hud-right">
+            <div class="minimap"><canvas id="minimap" width="180" height="136"></canvas></div>
+        </div>
+    </div>
+
+    <!-- 左下聊天层 -->
+    <div class="chat-wrap" id="chatWrap">
+        <div class="chat-log" id="chatLog"></div>
+        <div class="chat-input-line">
+            <span class="chat-tag" id="chatTag">Enter 说话</span>
+            <input id="chatInput" type="text" maxlength="200" placeholder="回车发送，ESC 取消" disabled />
+        </div>
+    </div>
+
+    <!-- 准星 -->
+    <div id="crosshair" class="crosshair"></div>
+
+    <!-- 击杀/死亡通知 -->
+    <div id="toastWrap" class="toast-wrap"></div>
+
+    <!-- 死亡遮罩 -->
+    <div id="deathMask" class="death-mask" hidden>
+        <div class="death-box">
+            <div class="death-title">坠 毁</div>
+            <div class="death-sub">你被 <span id="killerName">--</span> 击落</div>
+            <div class="countdown">复活倒计时 <span id="respawnCount">3</span> s</div>
+        </div>
+    </div>
+</div>
+
+<script src="client.js"></script>
+</body>
+</html>
