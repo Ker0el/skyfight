@@ -106,7 +106,8 @@ const state = {
     effects: [],          // 爆炸粒子/火花
     stars: [],            // 视差星空
     ping: 0,
-    pings: [],
+    rtt: 40,              // 实测往返延迟 ms（预测窗口基准）
+    snapAt: 0,            // 上次快照接收时间
 };
 
 // 初始化视差星空
@@ -244,14 +245,11 @@ function onFlash(d) {
 }
 
 function onSnapshot(d) {
-    // ping 估算
-    state.pings.push(performance.now());
-    if (state.pings.length > 5) state.pings.shift();
-    // 这里用 1000/30 近似，简单用"已接收消息平均间隔"做个宽松值
-    if (state.pings.length >= 2) {
-        const avg = state.pings[state.pings.length - 1] - state.pings[0];
-        state.ping = Math.round((avg / state.pings.length) * 2) + 4;
-    }
+    // 快照间隔即往返时间的上界近似（发送即响应），滑动平均
+    const nowMs = performance.now();
+    state.rtt = state.rtt * 0.85 + Math.min(800, (nowMs - (state.snapAt ?? nowMs - 33))) * 0.15;
+    state.snapAt = nowMs;
+    state.ping = Math.round(state.rtt);
     pingV.textContent = state.ping;
 
     // 玩家
@@ -666,7 +664,7 @@ function draw(now) {
     if (state.phase === 'name') { requestAnimationFrame(draw); return; }
 
     // 快照间线性插值（自己：prev → cur；敌人：interp → cur）
-    const SNAP_MS = 33;
+    const SNAP_MS = Math.max(33, state.rtt * 0.6);
     const meK = clamp((now - state.me.snapAt) / SNAP_MS, 0, 1);
     let dA = state.me.angle - state.me.prevAngle;
     while (dA > Math.PI) dA -= Math.PI * 2;
@@ -676,7 +674,8 @@ function draw(now) {
     const myY = state.me.prevY + (state.me.y - state.me.prevY) * meK;
 
     // 客户端预测：按键时自机向前模拟，快照到达后平滑拉回
-    const PRED_MS = 100;
+    // 窗口 = 快照间隔 + RTT：高延迟下预测持续更久，避免提前拉回造成卡顿
+    const PRED_MS = 33 + state.rtt;
     const predK = 1 - Math.min(1, (now - state.me.snapAt) / PRED_MS);
     if (state.me.alive && predK > 0) {
         const pK = state.keys, pSpd = speedOf(state.me.score);

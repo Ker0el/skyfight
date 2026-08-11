@@ -590,6 +590,10 @@ wss.on('connection', (ws, req) => {
         case 'flash':
           if (p) tryFlash(p);
           break;
+        case 'ping':
+          // 回 pong 用于客户端 RTT 测量（未 join 也能测）
+          if (ws.readyState === 1) try { ws.send(JSON.stringify({ op: 'pong', data: { t: data?.t } })); } catch {}
+          break;
         case 'chat':
           if (p) sendChat(p, data);
           break;
