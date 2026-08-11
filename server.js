@@ -401,7 +401,7 @@ function tick(dt) {
     if (vx || vy) {
       const len = Math.hypot(vx, vy);
       const boosted = p.boostUntil > now;
-      const spd = speedOf(p.score) * (boosted ? 1.6 : 1);
+      const spd = speedOf(p.score) * (boosted ? 2.2 : 1);
       p.x = clamp(p.x + (vx / len) * spd * dt, 16, WORLD_W - 16);
       p.y = clamp(p.y + (vy / len) * spd * dt, 16, WORLD_H - 16);
     }
